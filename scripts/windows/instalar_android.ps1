@@ -3,7 +3,7 @@
 #      Opcional: -Apk C:\caminho\Sync_Stonedge.apk para usar um ficheiro local.
 param([string]$Apk = "")
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"   # o adb escreve avisos no stderr
 $pkg = "pt.andrecarmo.syncstonedge"
 $url = "https://github.com/stonedgelight/Sync_Stonedge/releases/latest/download/Sync_Stonedge.apk"
 
@@ -27,7 +27,7 @@ if ($state -ne "device") { Write-Host "Telemóvel não ligado/autorizado ($state
 if (-not $Apk) {
   $Apk = Join-Path $env:TEMP "Sync_Stonedge.apk"
   Write-Host "A transferir a versão mais recente: $url"
-  Invoke-WebRequest -Uri $url -OutFile $Apk -UseBasicParsing
+  Invoke-WebRequest -Uri $url -OutFile $Apk -UseBasicParsing -ErrorAction Stop
 }
 
 Write-Host "A instalar $Apk ..."
@@ -35,7 +35,7 @@ Write-Host "A instalar $Apk ..."
 if ($LASTEXITCODE -ne 0) { Write-Host "A instalação falhou." -ForegroundColor Red; Read-Host "Enter"; exit 1 }
 
 Write-Host "A conceder permissões..."
-& $adb shell pm grant $pkg android.permission.POST_NOTIFICATIONS 2>$null
+& $adb shell pm grant $pkg android.permission.POST_NOTIFICATIONS
 & $adb shell cmd notification allow_listener "$pkg/$pkg.SyncListenerService"
 & $adb shell dumpsys deviceidle whitelist +$pkg
 & $adb shell cmd appops set $pkg RUN_IN_BACKGROUND allow
