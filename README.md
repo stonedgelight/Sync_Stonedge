@@ -59,7 +59,7 @@ funções à medida que fizerem falta.
 | Alertas ficam no Centro de Notificações do Windows | Sim | Sim | Não (problema conhecido) |
 | Filtro de duplicados (atualizações repetidas do WhatsApp) | Sim | Sim | Problemas conhecidos |
 | Escolha por app: enviar, esconder conteúdo ou bloquear | Sim | Enviar ou bloquear | Sim |
-| Código aberto e pequeno o suficiente para auditar | Sim (cerca de 2 700 linhas) | Não | Sim (projeto grande) |
+| Código aberto e pequeno o suficiente para auditar | Sim (cerca de 3 100 linhas) | Não | Sim (projeto grande) |
 | Âmbito | Focado em notificações, a crescer | Chamadas, SMS, fotos, ecrã | Muito amplo |
 
 O objetivo não é substituir estas ferramentas em tudo o que fazem. É ter uma base própria, simples
