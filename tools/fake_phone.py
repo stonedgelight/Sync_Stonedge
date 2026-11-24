@@ -92,6 +92,20 @@ async def main() -> None:
                     await ws.send(json.dumps({"t": "unauthorized"}))
                     await ws.close()
                     return
+                elif msg.get("t") == "dial" and authed:
+                    print(f"MARCADOR: {msg.get('number')} ({msg.get('name')})", flush=True)
+                    await ws.send(json.dumps({"t": "dial_ack", "req": msg.get("req"), "ok": True, "via": "dialer"}))
+
+                    async def fake_call():
+                        # simula: o utilizador carrega em ligar após 1 s e a chamada dura 2 s
+                        await asyncio.sleep(1)
+                        now = int(dt.datetime.now().timestamp() * 1000)
+                        await ws.send(json.dumps({"t": "call_state", "state": "offhook", "ts": now}))
+                        await asyncio.sleep(2)
+                        await ws.send(json.dumps({"t": "call_state", "state": "idle", "ts": now + 2000}))
+
+                    asyncio.ensure_future(fake_call())
+                    continue
                 if authed and ws not in clients:
                     clients.add(ws)
                     await ws.send(json.dumps({"t": "welcome", "device": "Simulador", "android": "14", "app": "sim"}))

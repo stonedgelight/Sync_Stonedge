@@ -24,9 +24,10 @@ class ClientState {
  * O PC é o cliente: assim não é preciso abrir portas na firewall do Windows nem do Ubuntu.
  *
  * Protocolo (JSON, um objeto por mensagem, campo "t" = tipo):
- *   PC -> tel: hello{token, client} | pair{pin, client} | ping
+ *   PC -> tel: hello{token, client} | pair{pin, client} | ping | dial{req, number, name, lead_id}
  *   tel -> PC: welcome{device, android, app} | paired{token} | pair_failed{reason}
  *              unauthorized | notif{...} | removed{id} | pong
+ *              dial_ack{req, ok, via, error} | call_state{state: ringing|offhook|idle, ts}
  */
 class SyncServer(private val app: Context, port: Int) : WebSocketServer(InetSocketAddress(port)) {
 
@@ -89,6 +90,22 @@ class SyncServer(private val app: Context, port: Int) : WebSocketServer(InetSock
             }
 
             "ping" -> conn.send("{\"t\":\"pong\"}")
+
+            "dial" -> {
+                if (!st.authed) return
+                val req = msg.optString("req")
+                val number = msg.optString("number")
+                val name = msg.optString("name")
+                SyncCore.runOnMain {
+                    val reply = JSONObject().put("t", "dial_ack").put("req", req)
+                    if (Dialer.clean(number).count { it.isDigit() } < 3) {
+                        reply.put("ok", false).put("error", "Número inválido")
+                    } else {
+                        reply.put("ok", true).put("via", Dialer.show(app, number, name))
+                    }
+                    runCatching { conn.send(reply.toString()) }
+                }
+            }
         }
     }
 

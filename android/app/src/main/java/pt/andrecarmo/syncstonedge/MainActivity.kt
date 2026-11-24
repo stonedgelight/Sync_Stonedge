@@ -27,6 +27,12 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
+    companion object {
+        /** Verdadeiro enquanto o ecrã principal está à vista (o marcador abre sem restrições). */
+        @Volatile var visible = false
+            private set
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private val refresher = object : Runnable {
         override fun run() {
@@ -45,6 +51,9 @@ class MainActivity : Activity() {
     private lateinit var tvPcs: TextView
     private lateinit var tvPin: TextView
     private lateinit var tvFingerprint: TextView
+    private lateinit var tvCalls: TextView
+    private lateinit var btnPhonePerm: Button
+    private lateinit var btnOverlay: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,17 +103,39 @@ class MainActivity : Activity() {
         sectionTitle(root, "5 · Teste")
         action(root, "Enviar notificação de teste") { postTest() }
 
+        sectionTitle(root, "6 · Chamadas pedidas pelo PC")
+        body(root, "O Motor comercial envia um número de cada vez; aparece no marcador e és tu que carregas em ligar.", 13f)
+            .setTextColor(MUTED)
+        tvCalls = body(root)
+        btnPhonePerm = action(root, "Permitir ver o estado das chamadas") {
+            requestPermissions(arrayOf(Manifest.permission.READ_PHONE_STATE), 2)
+        }
+        btnOverlay = action(root, "Permitir abrir o marcador por cima de outras apps") {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+        }
+        action(root, "Xiaomi: janelas pop-up em segundo plano") { openMiuiPermissions() }
+
         SyncCore.ensureRunning(this)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 2) CallMonitor.start(this)
+        refresh()
     }
 
     override fun onResume() {
         super.onResume()
+        visible = true
         SyncCore.listeners.add(onChange)
         handler.post(refresher)
     }
 
     override fun onPause() {
         super.onPause()
+        visible = false
         SyncCore.listeners.remove(onChange)
         handler.removeCallbacks(refresher)
     }
@@ -143,6 +174,13 @@ class MainActivity : Activity() {
         }
         tvPin.textSize = if (pin != null && left > 0) 34f else 20f
 
+        val phoneOk = CallMonitor.hasPermission(this)
+        val overlayOk = Settings.canDrawOverlays(this)
+        tvCalls.text = (if (phoneOk) "✔ Estado das chamadas" else "✘ Sem acesso ao estado das chamadas") + "\n" +
+            (if (overlayOk) "✔ Pode abrir o marcador com a app fechada" else "✘ O marcador só abre a partir da notificação")
+        btnPhonePerm.show(!phoneOk)
+        btnOverlay.show(!overlayOk)
+
         val fp = CertManager.fingerprint
         tvFingerprint.text = if (fp.isNotEmpty()) "Certificado do telemóvel: " + fp.take(16).chunked(4).joinToString(" ") else ""
     }
@@ -166,6 +204,22 @@ class MainActivity : Activity() {
             Intent().setComponent(
                 ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
             ),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+        )
+        for (i in intents) {
+            try {
+                startActivity(i)
+                return
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun openMiuiPermissions() {
+        val intents = listOf(
+            Intent("miui.intent.action.APP_PERM_EDITOR")
+                .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                .putExtra("extra_pkgname", packageName),
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
         )
         for (i in intents) {

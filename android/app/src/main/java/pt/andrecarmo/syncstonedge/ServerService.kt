@@ -32,11 +32,13 @@ class ServerService : Service() {
         goForeground()
         SyncCore.startServer()
         registerNsd()
+        CallMonitor.start(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         goForeground()
         SyncCore.startServer()
+        CallMonitor.start(this)
         return START_STICKY
     }
 
@@ -44,6 +46,7 @@ class ServerService : Service() {
         running = false
         instance = null
         unregisterNsd()
+        CallMonitor.stop()
         releaseWifiLock()
         SyncCore.stopServer()
         super.onDestroy()

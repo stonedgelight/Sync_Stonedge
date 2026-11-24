@@ -71,6 +71,17 @@ class PhoneClient:
         if self._ws is not None:
             asyncio.ensure_future(self._ws.close())
 
+    async def send(self, msg: dict) -> bool:
+        """Envia uma mensagem ao telemóvel; devolve False se não houver sessão ativa."""
+        if self._ws is None or not self.connected:
+            return False
+        try:
+            await self._ws.send(json.dumps(msg))
+            return True
+        except Exception:
+            log.warning("Falha a enviar %s", msg.get("t"), exc_info=True)
+            return False
+
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
@@ -212,7 +223,7 @@ class PhoneClient:
             self.cfg.set(host=host, device=device)
             self._status("connected", f"Ligado a {device} (Android {msg.get('android', '?')})")
             self.on_event(msg)
-        elif t in ("notif", "removed"):
+        elif t in ("notif", "removed", "dial_ack", "call_state"):
             self.on_event(msg)
 
     def _status(self, state: str, text: str) -> None:

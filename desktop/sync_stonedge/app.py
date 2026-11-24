@@ -8,6 +8,8 @@ import socket
 import sys
 import threading
 import time
+import uuid
+from collections import deque
 
 from . import APP_NAME, __version__
 from .client import PhoneClient
@@ -33,6 +35,12 @@ class Core:
         self.client: PhoneClient | None = None
         self._replays: list[dict] = []
         self._replay_task: asyncio.Task | None = None
+        # chamadas (API local)
+        self.device: str | None = cfg.get("device")
+        self.call_state = "idle"
+        self.call_events: deque[dict] = deque(maxlen=300)
+        self._seq = 0
+        self._pending_dials: dict[str, asyncio.Future] = {}
 
     # ---- thread asyncio --------------------------------------------------------
 
@@ -64,6 +72,16 @@ class Core:
         t = msg.get("t")
         if t == "welcome":
             self._replays.clear()
+            self.device = msg.get("device") or self.device
+            return
+        if t == "dial_ack":
+            fut = self._pending_dials.pop(msg.get("req", ""), None)
+            if fut is not None and not fut.done():
+                fut.set_result(msg)
+            return
+        if t == "call_state":
+            self.call_state = msg.get("state", "idle")
+            self._add_call_event("call_state", state=self.call_state, phone_ts=msg.get("ts"))
             return
         if t == "removed":
             self.history.mark_removed(msg.get("id", ""))
@@ -108,6 +126,44 @@ class Core:
                 f"{n} notificação(ões) por ver no telemóvel",
                 ", ".join(a for a in apps if a)[:200] or "Abre o histórico para ver",
             )
+
+    # ---- chamadas (usado pela API local) ------------------------------------------------
+
+    def _add_call_event(self, type_: str, **data) -> dict:
+        self._seq += 1
+        ev = {"seq": self._seq, "type": type_, "ts": int(time.time() * 1000), **data}
+        self.call_events.append(ev)
+        return ev
+
+    def api_status(self) -> dict:
+        connected = bool(self.client and self.client.connected)
+        return {"ok": True, "connected": connected, "device": self.device if connected else None,
+                "call_state": self.call_state}
+
+    def api_calls(self, since: int = 0) -> dict:
+        evs = [e for e in list(self.call_events) if e["seq"] > since]
+        return {"ok": True, "events": evs, "last_seq": self._seq}
+
+    async def dial(self, number: str, name: str = "", lead_id=None) -> dict:
+        """Põe o número no marcador do telemóvel. Quem carrega em ligar é o utilizador."""
+        if not (self.client and self.client.connected):
+            return {"ok": False, "error": "O telemóvel não está ligado ao Sync_Stonedge."}
+        req = uuid.uuid4().hex[:12]
+        fut = self.loop.create_future()
+        self._pending_dials[req] = fut
+        sent = await self.client.send({"t": "dial", "req": req, "number": number, "name": name,
+                                       "lead_id": lead_id})
+        if not sent:
+            self._pending_dials.pop(req, None)
+            return {"ok": False, "error": "Não foi possível enviar ao telemóvel."}
+        try:
+            ack = await asyncio.wait_for(fut, timeout=6)
+        except asyncio.TimeoutError:
+            self._pending_dials.pop(req, None)
+            return {"ok": False, "error": "O telemóvel não confirmou (a app precisa da versão 0.2 ou superior)."}
+        ev = self._add_call_event("dial", number=number, name=name, lead_id=lead_id, via=ack.get("via"))
+        return {"ok": bool(ack.get("ok", True)), "req": req, "via": ack.get("via"), "seq": ev["seq"],
+                "error": ack.get("error")}
 
     # ---- ações ----------------------------------------------------------------------
 
@@ -183,7 +239,10 @@ def run_gui(cfg: Config) -> None:
     )
     tray.start()
     core.start()
+    api = _start_api(core)
     ui.mainloop()
+    if api:
+        api.stop()
 
 
 def run_console(cfg: Config, pin: str | None) -> None:
@@ -202,11 +261,26 @@ def run_console(cfg: Config, pin: str | None) -> None:
 
     core = Core(cfg, history, notifier, ask_pin, lambda s, t: None)  # o logging já imprime o estado
     t = core.start()
+    api = _start_api(core)
     try:
         while t.is_alive():
             t.join(0.5)
     except KeyboardInterrupt:
         core.stop()
+    if api:
+        api.stop()
+
+
+def _start_api(core: "Core"):
+    try:
+        from .localapi import LocalAPI
+
+        api = LocalAPI(core)
+        api.start()
+        return api
+    except Exception:
+        log.exception("Não foi possível arrancar a API local")
+        return None
 
 
 def main() -> None:

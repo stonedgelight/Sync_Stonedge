@@ -31,7 +31,7 @@ as áreas em que trabalho todos os dias: redes, protocolos, segurança, Android,
 desktop multiplataforma e entrega contínua. O código é meu, está aberto, e vai evoluir com novas
 funções à medida que fizerem falta.
 
-## O que faz (v0.1)
+## O que faz (v0.2)
 
 - Recebe no PC todas as notificações do telemóvel, com o nome e o ícone da app, o título, o texto
   e a fotografia do contacto quando existe (WhatsApp, Mensagens, Telegram, email...).
@@ -43,6 +43,10 @@ funções à medida que fizerem falta.
   por omissão configurável.
 - Quando o PC se liga, recebe um resumo das notificações que já estavam por ver.
 - Modo "Não incomodar" e arranque automático com o sistema.
+- **Chamadas pedidas pelo PC (v0.2).** Outras aplicações do PC podem pôr um número no marcador do
+  telemóvel através de uma API local. O telemóvel nunca liga sozinho: o utilizador carrega em ligar.
+  O estado da chamada (a tocar, em curso, terminada) volta ao PC. É assim que o
+  [Motor comercial](docs/INTEGRACAO_MOTOR_COMERCIAL.md) faz a sua fila de chamadas a leads.
 
 ## Diferenças face às alternativas
 
@@ -149,8 +153,8 @@ e a um novo emparelhamento.
 
 | Componente | Plataforma | Estado |
 |---|---|---|
-| App Android | Xiaomi Redmi 11T (HyperOS) | Em teste |
-| App de PC | Windows 11 | Em teste |
+| App Android | Xiaomi Redmi Note 11 Pro 5G (HyperOS) | Notificações a funcionar; chamadas em teste |
+| App de PC | Windows 11 Pro | Notificações a funcionar; API de chamadas em teste |
 | App de PC | Ubuntu (GNOME) | Planeado |
 | Protocolo | Simulador incluído (`tools/fake_phone.py`), CI no GitHub Actions | A passar |
 
@@ -186,12 +190,23 @@ Mensagens JSON sobre WebSocket seguro, com o tipo no campo `t`:
 | tel. → PC | `welcome` | `device`, `android`, `app` |
 | tel. → PC | `notif` | `id`, `pkg`, `app`, `title`, `text`, `sub`, `time`, `replay`, `icon`, `image` |
 | tel. → PC | `removed` | `id` |
+| PC → tel. | `dial` | `req`, `number`, `name`, `lead_id` |
+| tel. → PC | `dial_ack` | `req`, `ok`, `via`, `error` |
+| tel. → PC | `call_state` | `state` (`ringing`, `offhook`, `idle`), `ts` |
+
+### API local (para outras aplicações do PC)
+
+Escuta só em `127.0.0.1`; a porta e o token ficam em `%APPDATA%\Sync_Stonedge\api.json`.
+`GET /api/status`, `POST /api/dial`, `GET /api/calls?since=N`. Contrato completo e exemplo de
+integração em [docs/INTEGRACAO_MOTOR_COMERCIAL.md](docs/INTEGRACAO_MOTOR_COMERCIAL.md).
+Histórico de versões em [CHANGELOG.md](CHANGELOG.md).
 
 ## Próximos passos
 
 - Versão Ubuntu testada e empacotada.
 - Dispensar uma notificação no PC e ela desaparecer do telemóvel.
 - Resposta rápida a mensagens (WhatsApp, SMS) a partir do PC.
+- Transcrição das chamadas no PC, com aviso e consentimento do interlocutor.
 - Nível de bateria do telemóvel no ícone da bandeja.
 - Partilha da área de transferência e envio de ficheiros.
 

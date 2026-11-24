@@ -17,6 +17,11 @@ class SyncApp : Application() {
             }
         )
         nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_CALLS, "Chamadas pedidas pelo PC", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Número enviado pelo Motor comercial, pronto a ligar"
+            }
+        )
+        nm.createNotificationChannel(
             NotificationChannel(CHANNEL_TEST, "Testes", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Notificações de teste enviadas para o PC"
             }
@@ -26,5 +31,6 @@ class SyncApp : Application() {
     companion object {
         const val CHANNEL_STATUS = "status"
         const val CHANNEL_TEST = "test"
+        const val CHANNEL_CALLS = "calls"
     }
 }

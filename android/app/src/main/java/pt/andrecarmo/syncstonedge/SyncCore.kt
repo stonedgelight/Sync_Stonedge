@@ -72,6 +72,10 @@ object SyncCore {
         main.postDelayed({ if (ServerService.running) startServer() }, 10_000)
     }
 
+    fun runOnMain(block: () -> Unit) {
+        main.post(block)
+    }
+
     fun publishNotif(j: JSONObject) {
         server?.broadcastNotif(j)
     }
