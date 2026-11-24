@@ -1,0 +1,106 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android (APK)
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('0.1.{0}-dev', github.run_number) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Compilar APK
+        working-directory: android
+        run: gradle --no-daemon --stacktrace assembleRelease
+      - name: Preparar artefacto
+        run: cp android/app/build/outputs/apk/release/app-release.apk Sync_Stonedge.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: Sync_Stonedge.apk
+
+  desktop-tests:
+    name: PC - teste de protocolo (simulador)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências
+        run: pip install websockets cryptography pillow zeroconf
+      - name: Emparelhar e receber notificações do simulador
+        run: |
+          export XDG_CONFIG_HOME=$RUNNER_TEMP/cfg
+          python tools/fake_phone.py --port 47810 --every 1 --count 5 > phone.log 2>&1 &
+          sleep 3
+          PIN=$(grep -o 'PIN [0-9]*' phone.log | cut -d' ' -f2)
+          cd desktop
+          timeout 10 python -m sync_stonedge --console --host 127.0.0.1 --port 47810 --pin "$PIN" || true
+          python - <<'EOF'
+          import json, os
+          base = os.path.join(os.environ["XDG_CONFIG_HOME"], "Sync_Stonedge")
+          cfg = json.load(open(os.path.join(base, "config.json")))
+          hist = json.load(open(os.path.join(base, "history.json")))
+          assert cfg["token"] and cfg["fingerprint"], "emparelhamento falhou"
+          assert len(hist) >= 3, f"poucas notificações: {len(hist)}"
+          print("OK:", len(hist), "notificações recebidas")
+          EOF
+
+  windows:
+    name: Windows (EXE)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependências
+        run: pip install -r desktop/requirements.txt pyinstaller
+      - name: Compilar EXE
+        working-directory: desktop
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name Sync_Stonedge
+          --icon assets/icon.ico --add-data "assets;assets"
+          --collect-all desktop_notifier --collect-all winrt
+          --collect-submodules zeroconf --hidden-import pystray._win32
+          run.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: desktop/dist/Sync_Stonedge.exe
+
+  release:
+    name: Publicar release
+    if: github.ref_type == 'tag'
+    needs: [android, windows, desktop-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/Sync_Stonedge.apk
+            out/Sync_Stonedge.exe
+          generate_release_notes: true
